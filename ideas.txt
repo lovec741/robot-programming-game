@@ -1,0 +1,53 @@
+robot
+- x, y, dir
+- move - time 1 tick
+- turn - time 1 tick
+- shoot - time 1 tick, reload time 3 ticks
+- get_next_shoot_time
+
+environment
+- get_stuff_at_x_y
+- get_other_robots
+
+"gameplay"
+- each level has the same idea, however it is partialy random
+    - first you can explore the level with simple controls
+    - then you code
+    - your code has to finish the level, however the level gets generated afterwards
+
+levels
+1. simple get from a to b (starting and ending point are randomized)
+2. a to b with a wall between them
+3. maze
+4. shoot stationary robot
+5. shoot moving robot (who moves in a line back and forth)
+6. shoot robot before he shoots you (other robot has simple AI - bullet avoidance and robot following)
+7. multi robot control - walls between, 2 robots pathfind 
+
+UI
+- at bottom text - navigation instructions (q quit, ad turn, ws move)
+
+Brainstorm
+- shooting might not be that interesting (it will mainly be calculating and predicting robot positions, which wont be easy for anything more than a linearly moving bot)
+- i like the idea of having multiple bots that have to work together to achive a goal
+    - maybe defend a "house" from rockets attacking it, where they have to pickup boxes to repair the wall
+
+mechanics
+- robot cannot run into anything! (else game over)
+- the goal of the game is to collect a certain amount of coins (usually 1 coin)
+- the robot can only see from his own perspective (not behind walls)
+
+stuff
+- robot
+- obstacle (wall) 
+- empty - grass / air
+- collectible - "coin"
+- 
+
+game progress
+- single robot
+    - move robot
+    - move robot with simple obstacle (straight wall)
+    - move robot through complex maze - find multiple coins
+- robot swarm
+    - move 4 robots
