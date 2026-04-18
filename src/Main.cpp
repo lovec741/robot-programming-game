@@ -75,7 +75,6 @@ void get_terminal_size(size_t &rows, size_t &cols) {
 }
 
 bool is_tile_visible(int radius, size_t x, size_t y, size_t robot_x, size_t robot_y, std::vector<std::vector<bool>> &visible_tiles, std::vector<std::vector<size_t>> &tiles) {
-    if (radius == 1) return true;
     int offset_x = x - robot_x;
     int offset_y = y - robot_y;
     int sign_offset_x = offset_x < 0 ? -1 : 1;
@@ -85,8 +84,15 @@ bool is_tile_visible(int radius, size_t x, size_t y, size_t robot_x, size_t robo
         return !visible_tiles[y][x] || tiles[y][x] != 0;
     };
 
-    if (offset_x == offset_y) {
-    return !is_cover(x-sign_offset_x, y-sign_offset_y);
+    if (radius == 1) {
+        if (offset_x*sign_offset_x == offset_y*sign_offset_y) { // corner
+            return !is_cover(x-sign_offset_x, y) || !is_cover(x, y-sign_offset_y);
+        }
+        return true;
+    }
+
+    if (offset_x*sign_offset_x == offset_y*sign_offset_y) { // corner
+        return !is_cover(x-sign_offset_x, y-sign_offset_y) && (!is_cover(x-sign_offset_x, y) || !is_cover(x, y-sign_offset_y));
     }
     if (offset_x == 0) {
         return !is_cover(x, y-sign_offset_y);
@@ -94,9 +100,9 @@ bool is_tile_visible(int radius, size_t x, size_t y, size_t robot_x, size_t robo
     if (offset_y == 0) {
         return !is_cover(x-sign_offset_x, y);
     }
-    if (offset_y == radius) {
+    if (offset_y*sign_offset_y == radius) {
         return !is_cover(x, y-sign_offset_y) && !is_cover(x-sign_offset_x, y-sign_offset_y);
-    } else if (offset_x == radius) {
+    } else if (offset_x*sign_offset_x == radius) {
         return !is_cover(x-sign_offset_x, y) && !is_cover(x-sign_offset_x, y-sign_offset_y);
     }
     return true;
@@ -108,11 +114,11 @@ bool check_xy_bounds(size_t x, size_t y) {
 }
 
 void recalculate_visible_tiles(size_t robot_x, size_t robot_y, std::vector<std::vector<bool>> &visible_tiles, std::vector<std::vector<size_t>> &tiles) {
-    // for (size_t y = 0; y < VERTICAL_TILES_COUNT; ++y) {
-    //     for (size_t x = 0; x < HORIZONTAL_TILES_COUNT; ++x) {
-    //         visible_tiles[y][x] = true;
-    //     }
-    // }
+    for (size_t y = 0; y < VERTICAL_TILES_COUNT; ++y) {
+        for (size_t x = 0; x < HORIZONTAL_TILES_COUNT; ++x) {
+            visible_tiles[y][x] = true;
+        }
+    }
     
     visible_tiles[robot_y][robot_x] = true;
     int radius = 1;
@@ -159,6 +165,13 @@ int main() {
     tiles[4][5] = 6;
     tiles[5][5] = 6;
     tiles[6][5] = 6;
+    tiles[4][7] = 6;
+    tiles[5][7] = 6;
+    tiles[6][7] = 6;
+    tiles[6][10] = 6;
+    tiles[6][11] = 6;
+    tiles[6][12] = 6;
+    tiles[6][13] = 6;
     size_t current_x = 6, current_y = 6;
     tiles[current_x][current_y] = 4;
 
@@ -169,7 +182,7 @@ int main() {
     
     
     recalculate_visible_tiles(current_x, current_y, visible_tiles, tiles);
-
+    size_t i = 0;
     while (running) {
         std::cout << "\033[H"; // move cursor to top-left
         size_t rows, cols;
@@ -210,71 +223,74 @@ int main() {
                 }
             }
 
-
-            for (size_t r = 0; r < rows; ++r) {
-                for (size_t c = 0; c < cols; ++c) {
-                    // std::cout << (((r+c) % 2 == 0) ? fill1 : fill2);
-                    if (c < canvas_start_x || r < canvas_start_y || c > canvas_start_x + CANVAS_WIDTH + 1 || r > canvas_start_y + CANVAS_HEIGHT + 1) {
-                        std::cout << ".";
-                        continue;
-                    }
-                    size_t x = c - canvas_start_x;
-                    size_t y = r - canvas_start_y;
-                    if (y == 0 && x == 0) {
-                        std::cout << LINE_WALLS[0];
-                    } else if (y == 0 && x == CANVAS_WIDTH+1) {
-                        std::cout << LINE_WALLS[1];
-                    } else if (y == CANVAS_HEIGHT+1 && x == 0) {
-                        std::cout << LINE_WALLS[2];
-                    } else if (y == CANVAS_HEIGHT+1 && x == CANVAS_WIDTH+1) {
-                        std::cout << LINE_WALLS[3];
-                    } else if ((y == 0 || y == CANVAS_HEIGHT+1) && x < CANVAS_WIDTH+1) {
-                        std::cout << LINE_WALLS[4];
-                    } else if ((x == 0 || x == CANVAS_WIDTH+1) && y < CANVAS_HEIGHT+1) {
-                        std::cout << LINE_WALLS[5];
-                    } else {
-                        x--;
-                        y--;
-                        size_t tile_x = x / TILE_WIDTH;
-                        size_t tile_y = y / TILE_HEIGHT;
-                        size_t tile_inner_x = x % TILE_WIDTH;
-                        size_t tile_inner_y = y % TILE_HEIGHT;
-                        if (!visible_tiles[tile_y][tile_x]) {
-                            srand(x*HORIZONTAL_TILES_COUNT+y);
-                            std::cout << ((rand() % 2 == 0) ? "?" : "X");;
+            if (i % 10 == 0) {
+                for (size_t r = 0; r < rows; ++r) {
+                    for (size_t c = 0; c < cols; ++c) {
+                        // std::cout << (((r+c) % 2 == 0) ? fill1 : fill2);
+                        if (c < canvas_start_x || r < canvas_start_y || c > canvas_start_x + CANVAS_WIDTH + 1 || r > canvas_start_y + CANVAS_HEIGHT + 1) {
+                            std::cout << ".";
                             continue;
                         }
-                        switch (tiles[tile_y][tile_x])
-                        {
-                        case 0:
-                            srand(x*HORIZONTAL_TILES_COUNT+y);
-                            std::cout << ((rand() % 17 == 0) ? 'v' : ' ');
-                            break;
-                        case 1:
-                            std::cout << ROBOT_UP_ART[tile_inner_y][tile_inner_x];
-                            break;
-                        case 2:
-                            std::cout << ROBOT_DOWN_ART[tile_inner_y][tile_inner_x];
-                            break;
-                        case 3:
-                            std::cout << ROBOT_LEFT_ART[tile_inner_y][tile_inner_x];
-                            break;
-                        case 4:
-                            std::cout << ROBOT_RIGHT_ART[tile_inner_y][tile_inner_x];
-                            break;
-                        case 5:
-                            std::cout << BLOCK_ART[tile_inner_y][tile_inner_x];
-                            break;
-                        case 6:
-                            std::cout << (((tile_x+tile_y) % 2 == 0) ? WALL_ART_EVEN : WALL_ART_ODD)[tile_inner_y][tile_inner_x];
-                            break;
+                        size_t x = c - canvas_start_x;
+                        size_t y = r - canvas_start_y;
+                        if (y == 0 && x == 0) {
+                            std::cout << LINE_WALLS[0];
+                        } else if (y == 0 && x == CANVAS_WIDTH+1) {
+                            std::cout << LINE_WALLS[1];
+                        } else if (y == CANVAS_HEIGHT+1 && x == 0) {
+                            std::cout << LINE_WALLS[2];
+                        } else if (y == CANVAS_HEIGHT+1 && x == CANVAS_WIDTH+1) {
+                            std::cout << LINE_WALLS[3];
+                        } else if ((y == 0 || y == CANVAS_HEIGHT+1) && x < CANVAS_WIDTH+1) {
+                            std::cout << LINE_WALLS[4];
+                        } else if ((x == 0 || x == CANVAS_WIDTH+1) && y < CANVAS_HEIGHT+1) {
+                            std::cout << LINE_WALLS[5];
+                        } else {
+                            x--;
+                            y--;
+                            size_t tile_x = x / TILE_WIDTH;
+                            size_t tile_y = y / TILE_HEIGHT;
+                            size_t tile_inner_x = x % TILE_WIDTH;
+                            size_t tile_inner_y = y % TILE_HEIGHT;
+                            if (!visible_tiles[tile_y][tile_x]) {
+                                srand(x*HORIZONTAL_TILES_COUNT+y);
+                                std::cout << ((rand() % 2 == 0) ? "?" : "X");;
+                                continue;
+                            }
+                            switch (tiles[tile_y][tile_x])
+                            {
+                            case 0:
+                                srand(x*HORIZONTAL_TILES_COUNT+y);
+                                std::cout << ((rand() % 17 == 0) ? 'v' : ' ');
+                                break;
+                            case 1:
+                                std::cout << ROBOT_UP_ART[tile_inner_y][tile_inner_x];
+                                break;
+                            case 2:
+                                std::cout << ROBOT_DOWN_ART[tile_inner_y][tile_inner_x];
+                                break;
+                            case 3:
+                                std::cout << ROBOT_LEFT_ART[tile_inner_y][tile_inner_x];
+                                break;
+                            case 4:
+                                std::cout << ROBOT_RIGHT_ART[tile_inner_y][tile_inner_x];
+                                break;
+                            case 5:
+                                std::cout << BLOCK_ART[tile_inner_y][tile_inner_x];
+                                break;
+                            case 6:
+                                std::cout << (((tile_x+tile_y) % 2 == 0) ? WALL_ART_EVEN : WALL_ART_ODD)[tile_inner_y][tile_inner_x];
+                                break;
+                            }
                         }
                     }
                 }
             }
+            
         }
         std::cout.flush();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        ++i;
     }
 
     std::cout << "\033[?25h"; // restore cursor
