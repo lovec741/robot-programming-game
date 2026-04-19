@@ -1,2 +1,6 @@
 .vscode
-Main
+build/
+robot_programming_game.egg-info/
+__pycache__/
+venv/
+main
