@@ -80,19 +80,23 @@ bool is_tile_visible(int radius, size_t x, size_t y, size_t robot_x, size_t robo
     int sign_offset_x = offset_x < 0 ? -1 : 1;
     int sign_offset_y = offset_y < 0 ? -1 : 1;
 
-    auto is_cover = [&visible_tiles, &tiles](size_t x, size_t y) -> bool {
-        return !visible_tiles[y][x] || tiles[y][x] != 0;
+    auto is_air = [&tiles](size_t x, size_t y) -> bool {
+        return tiles[y][x] == 0;
+    };
+
+    auto is_cover = [&visible_tiles, &tiles, &is_air](size_t x, size_t y) -> bool {
+        return !visible_tiles[y][x] || !is_air(x, y);
     };
 
     if (radius == 1) {
         if (offset_x*sign_offset_x == offset_y*sign_offset_y) { // corner
-            return !is_cover(x-sign_offset_x, y) || !is_cover(x, y-sign_offset_y);
+            return is_air(x-sign_offset_x, y) || is_air(x, y-sign_offset_y);
         }
         return true;
     }
 
     if (offset_x*sign_offset_x == offset_y*sign_offset_y) { // corner
-        return !is_cover(x-sign_offset_x, y-sign_offset_y) && (!is_cover(x-sign_offset_x, y) || !is_cover(x, y-sign_offset_y));
+        return !is_cover(x-sign_offset_x, y-sign_offset_y) && (is_air(x-sign_offset_x, y) || is_air(x, y-sign_offset_y));
     }
     if (offset_x == 0) {
         return !is_cover(x, y-sign_offset_y);
