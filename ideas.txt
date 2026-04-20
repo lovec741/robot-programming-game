@@ -42,7 +42,7 @@ stuff
 - obstacle (wall) 
 - empty - grass / air
 - collectible - "coin"
-- 
+- flags - user set, to mark things on the board
 
 game progress
 - single robot
@@ -51,3 +51,40 @@ game progress
     - move robot through complex maze - find multiple coins
 - robot swarm
     - move 4 robots
+
+GAME LOOP
+- process movement - 1 movement action per tick
+- recalculate visible tiles if moved
+- check if coin collected
+- check end game conditions
+- render tiles - visible/invisible, flags, textures
+    - only those that changed
+
+USER ACTIONS
+- robot
+    - get position and direction
+    - action - move, turn, reset action (only move or turn not both)
+        - methods return enum ActionResult - Ok, Blocked, OtherActionPending
+    - get tilemap - 2d array - enum Tile - Air, Wall, Robot, Unknown, Coin
+- game
+    - select level, get selected level
+    - run_with_manual_control - allows the user to control the robot with WASD and explore the level
+    - step - returns false when game finished, optional paramater speed
+    - get robots
+    - get coin count
+    - get remaining coin count
+    - get flag - A red, B green, C blue, D yellow
+    - set flag - A,B,C,D x,y
+
+
+
+code structure:
+
+Game class
+- handles main game loop
+    - takes actions
+- win logic
+- level logic
+
+Robot class
+- 

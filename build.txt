@@ -1,0 +1,5 @@
+for dev pip install pybind11 is needed
+- you need to also add python to path and the pybind3 include to path
+so these paths:
+python -c "import pybind11; print(pybind11.get_include())"
+python -c "import sysconfig; print(sysconfig.get_path('include'))"
