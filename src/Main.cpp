@@ -67,6 +67,8 @@ constexpr char ANSI_BG_GREEN[] = "\033[42m";
 constexpr char ANSI_BG_BLUE[] = "\033[44m";
 constexpr char ANSI_BG_YELLOW[] = "\033[43m";
 
+constexpr std::string_view CONTROLS_TEXT = "q = quit    w/s = forward/backward    a/d = turn left/right";
+
 
 void set_raw_mode(bool enable) {
     static termios original;
@@ -90,8 +92,8 @@ void get_terminal_size(size_t &rows, size_t &cols) {
     cols = w.ws_col;
 }
 
-void ansi_move_cursor(size_t row, size_t column) {
-    std::cout << "\033[" << row << ";" << column << "H";
+void ansi_move_cursor(size_t x, size_t y) {
+    std::cout << "\033[" << y+1 << ";" << x+1 << "H";
 }
 
 enum class FlagColor {
@@ -139,6 +141,10 @@ public:
             return TileInfo::Coin;
         }
     };
+    void change_art(TileArt new_art) {
+        art = new_art;
+        changed = true;
+    }
     bool is_free() const {
         return art == TileArt::Empty;
     };
@@ -146,36 +152,49 @@ public:
 
 
 class Level {
-private:
-    size_t height_;
+protected:
     size_t width_;
-    std::vector<std::vector<Tile>> tiles_{height_, std::vector<Tile>(width_)};
+    size_t height_;
     size_t coins_goal_;
-    size_t coins_collected_;
+    std::pair<size_t, size_t> initial_robot_xy_;
+    Direction initial_robot_direction_;
+    std::vector<std::vector<Tile>> tiles_;
     bool check_bounds(int x, int y) const {
-        return x >= 0 && y >= 0 && x < width_ && y < height_;
+        return x >= 0 && y >= 0 && x < (int)width() && y < (int)height();
     }
     bool is_free(int x, int y) const {
         return check_bounds(x, y) && tiles_[y][x].is_free();
     }
 public:
-    size_t height() const { return height_; };
-    size_t width() const { return width_; };
-    std::vector<std::vector<Tile>> tiles() { return tiles_; };
-    size_t coins_goal() const { return coins_goal_; };
-    size_t coins_collected() const { return coins_collected_; };
-    
+    Level(size_t width, size_t height, size_t coins_goal, std::pair<size_t, size_t> initial_robot_xy, Direction initial_robot_direction) 
+        : width_(width), height_(height), coins_goal_(coins_goal), initial_robot_xy_(initial_robot_xy), initial_robot_direction_(initial_robot_direction), tiles_{height, std::vector<Tile>(width)} {};
+    virtual ~Level() = default;
+    size_t width() const {return width_;};
+    size_t height() const {return height_;};
+    // std::vector<std::vector<Tile>> tiles() { return tiles_; };
+    size_t coins_goal() const {return coins_goal_;};
+    std::pair<size_t, size_t> initial_robot_xy() const {return initial_robot_xy_;};
+    Direction initial_robot_direction() const  {return initial_robot_direction_;};
 friend class Robot;
+friend class Game;
 };
 
+class Level1 : public Level {
+public:
+    Level1() : Level(20, 14, 1, std::make_pair(4, 4), Direction::Right) {
+        tiles_[5][5].art = TileArt::Wall;
+        tiles_[6][6].art = TileArt::Wall;
+        tiles_[7][6].art = TileArt::Wall;
+    };
+};
 
 class Robot {
 private:
     size_t x_;
     size_t y_;
     Direction direction_;
-    std::unique_ptr<Level> level_;
-    std::vector<std::vector<bool>> tile_visibility_{level_->height_, std::vector<bool>(level_->width_, true)};
+    std::shared_ptr<Level> level_;
+    std::vector<std::vector<bool>> tile_visibility_{level_->height(), std::vector<bool>(level_->width(), true)};
     std::optional<RobotAction> action_;
 
     bool is_tile_visible(int radius, size_t x, size_t y) {
@@ -222,34 +241,23 @@ private:
         tile_visibility_[y_][x_] = true;
         int radius = 1;
         bool tile_in_radius_exists = true;
-        size_t work_x, work_y;
+        auto check_visibility = [&](size_t work_x, size_t work_y) {
+            if (level_->check_bounds(work_x, work_y)) {
+                bool new_state = is_tile_visible(radius, work_x, work_y);
+                if (new_state != tile_visibility_[work_y][work_x]) {
+                    tile_visibility_[work_y][work_x] = new_state;
+                    level_->tiles_[work_y][work_x].changed = true;
+                }
+                tile_in_radius_exists = true;
+            }
+        };
         while (tile_in_radius_exists) {
             tile_in_radius_exists = false;
             for (int offset = -radius; offset < radius; ++offset) {
-                work_y = y_+radius;
-                work_x = x_+offset;
-                if (level_->check_bounds(work_x, work_y)) {
-                    tile_visibility_[work_y][work_x] = is_tile_visible(radius, work_x, work_y);
-                    tile_in_radius_exists = true;
-                }
-                work_y = y_-radius;
-                work_x = x_-offset;
-                if (level_->check_bounds(work_x, work_y)) {
-                    tile_visibility_[work_y][work_x] = is_tile_visible(radius, work_x, work_y);
-                    tile_in_radius_exists = true;
-                }
-                work_y = y_+offset+1;
-                work_x = x_+radius;
-                if (level_->check_bounds(work_x, work_y)) {
-                    tile_visibility_[work_y][work_x] = is_tile_visible(radius, work_x, work_y);
-                    tile_in_radius_exists = true;
-                }
-                work_y = y_-offset-1;
-                work_x = x_-radius;
-                if (level_->check_bounds(work_x, work_y)) {
-                    tile_visibility_[work_y][work_x] = is_tile_visible(radius, work_x, work_y);
-                    tile_in_radius_exists = true;
-                }
+                check_visibility(x_+offset, y_+radius);
+                check_visibility(x_-offset, y_-radius);
+                check_visibility(x_+radius, y_+offset+1);
+                check_visibility(x_-radius, y_-offset-1);
             }
             ++radius;
         }
@@ -258,24 +266,21 @@ private:
     void handle_action() {
         if (action_ == RobotAction::MoveForward || action_ == RobotAction::MoveBackward) {
             auto [new_x, new_y] = get_xy_after_move(action_ == RobotAction::MoveForward);
-            level_->tiles()[y_][x_].changed = true;
-            level_->tiles()[y_][x_].art = TileArt::Empty;
+            level_->tiles_[y_][x_].change_art(TileArt::Empty);
             x_ = new_x;
             y_ = new_y;
-            level_->tiles()[y_][x_].changed = true;
-            level_->tiles()[y_][x_].art = get_tile_art_for_direction();
+            level_->tiles_[y_][x_].change_art(get_tile_art_for_direction());
             refresh_visible_tiles();
         } else if (action_ == RobotAction::TurnLeft || action_ == RobotAction::TurnRight) {
             auto new_direction = get_direction_after_turn(action_ == RobotAction::TurnRight);
             direction_ = new_direction;
-            level_->tiles()[y_][x_].changed = true;
-            level_->tiles()[y_][x_].art = get_tile_art_for_direction();
+            level_->tiles_[y_][x_].change_art(get_tile_art_for_direction());
         }
+        reset_action();
     }
 
     void step() {
-        // handle movement
-        // recalculate visible tiles
+        handle_action();
     }
 
     std::pair<int, int> get_xy_after_move(bool forward) {
@@ -290,6 +295,7 @@ private:
         case Direction::Left:
             return std::make_pair(x_+(forward ? -1 : 1), y_);
         }
+        throw std::runtime_error("Invalid direction");
     }
 
     Direction get_direction_after_turn(bool right) {
@@ -304,6 +310,7 @@ private:
         case Direction::Left:
             return right ? Direction::Up : Direction::Down;
         }
+        throw std::runtime_error("Invalid direction");
     }
 
     TileArt get_tile_art_for_direction() {
@@ -318,10 +325,16 @@ private:
         case Direction::Left:
             return TileArt::RobotLeft;
         }
+        throw std::runtime_error("Invalid direction");
     }
 public:
+    Robot(size_t x, size_t y, Direction direction, std::shared_ptr<Level> level) : x_(x), y_(y), direction_(direction), level_(std::move(level)) {
+        level_->tiles_[y_][x_].change_art(get_tile_art_for_direction());
+        refresh_visible_tiles();
+    };
+
     RobotActionResult set_action(RobotAction new_action) {
-        if (action_ != std::nullopt) {
+        if (action_.has_value()) {
             return RobotActionResult::ActionAlreadyPending;
         }
         if (new_action == RobotAction::MoveForward || new_action == RobotAction::MoveBackward) {
@@ -345,9 +358,13 @@ private:
     std::chrono::milliseconds step_speed_;
     size_t terminal_rows_ = 0;
     size_t terminal_cols_ = 0;
+    std::shared_ptr<Level> level_;
     std::unique_ptr<Robot> robot_;
     size_t tick_ = 0;
     bool manual_control_ = false;
+    bool canvas_too_small_ = false;
+    size_t canvas_width_;
+    size_t canvas_height_;
     bool running_ = true;
 
     /* updates terminal size variables, returns true if they changed */
@@ -362,18 +379,139 @@ private:
         return false;
     }
 
-    void draw_gui() {
-        
+    void draw_border(size_t canvas_start_x, size_t canvas_start_y) {
+        size_t border_start_x = canvas_start_x - 1;
+        size_t border_start_y = canvas_start_y - 1;
+        ansi_move_cursor(border_start_x, border_start_y);
+        std::cout << LINE_WALLS[0];
+        for (size_t i = 0; i < canvas_width_; i++)
+        {
+            std::cout << LINE_WALLS[4];
+        }
+        std::cout << LINE_WALLS[1];
+
+        for (size_t i = 1; i <= canvas_height_; i++)
+        {
+            ansi_move_cursor(border_start_x, border_start_y+i);
+            std::cout << LINE_WALLS[5];
+
+            ansi_move_cursor(border_start_x+canvas_width_+1, border_start_y+i);
+            std::cout << LINE_WALLS[5];
+        }
+
+        ansi_move_cursor(border_start_x, border_start_y+canvas_height_+1);
+        std::cout << LINE_WALLS[2];
+        for (size_t i = 0; i < canvas_width_; i++)
+        {
+            std::cout << LINE_WALLS[4];
+        }
+        std::cout << LINE_WALLS[3];
+
     }
 
-    void draw(bool do_patial_updates = true) {
+    void draw_canvas_too_small() {
+        std::cout << ANSI_CLEAR << "Please resize your window to make the canvas fit!";
+        std::cout.flush();
+    }
 
+    void draw_controls_text() {
+        ansi_move_cursor((terminal_cols_ - CONTROLS_TEXT.size()) / 2, terminal_rows_-2);
+        std::cout << CONTROLS_TEXT;
+    }
+
+    void draw_tile(size_t canvas_start_x, size_t canvas_start_y, size_t x, size_t y, Tile& tile) {
+        size_t offset_x = x*TILE_WIDTH;
+        size_t offset_y = y*TILE_HEIGHT;
+        bool has_flags = !tile.flags.empty();
+        for (size_t inner_y = 0; inner_y < TILE_HEIGHT; inner_y++) {
+            ansi_move_cursor(canvas_start_x+offset_x, canvas_start_y+offset_y+inner_y);
+            for (size_t inner_x = 0; inner_x < TILE_WIDTH; inner_x++) {
+                if (has_flags) {
+                    size_t idx = inner_x % tile.flags.size();
+                    FlagColor flag_color = *std::next(tile.flags.begin(), idx);
+                    switch (flag_color)
+                    {
+                    case FlagColor::Red:
+                        std::cout << ANSI_BG_RED;
+                        break;
+                    case FlagColor::Green:
+                        std::cout << ANSI_BG_GREEN;
+                        break;
+                    case FlagColor::Blue:
+                        std::cout << ANSI_BG_BLUE;
+                        break;
+                    case FlagColor::Yellow:
+                        std::cout << ANSI_BG_YELLOW;
+                        break;
+                    };
+                }
+                if (!robot_->tile_visibility_[y][x]) {
+                    srand((offset_x+inner_x)*canvas_width_+offset_y+inner_y);
+                    std::cout << ((rand() % 2 == 0) ? "?" : "X");;
+                } else {
+                    switch (tile.art)
+                    {
+                    case TileArt::Empty:
+                        srand((offset_x+inner_x)*canvas_width_+offset_y+inner_y);
+                        std::cout << ((rand() % 17 == 0) ? 'v' : ' ');
+                        break;
+                    case TileArt::RobotUp:
+                        std::cout << ROBOT_UP_ART[inner_y][inner_x];
+                        break;
+                    case TileArt::RobotDown:
+                        std::cout << ROBOT_DOWN_ART[inner_y][inner_x];
+                        break;
+                    case TileArt::RobotLeft:
+                        std::cout << ROBOT_LEFT_ART[inner_y][inner_x];
+                        break;
+                    case TileArt::RobotRight:
+                        std::cout << ROBOT_RIGHT_ART[inner_y][inner_x];
+                        break;
+                    // case TileArt::Block:
+                    //     std::cout << BLOCK_ART[tile_inner_y][tile_inner_x];
+                    //     break;
+                    case TileArt::Wall:
+                        std::cout << (((x+y) % 2 == 0) ? WALL_ART_EVEN : WALL_ART_ODD)[inner_y][inner_x];
+                        break;
+                    }
+                }
+                
+                
+                if (has_flags) {
+                    std::cout << ANSI_RESET;
+                }
+            }
+        }
+    }
+
+    void draw(bool full_update) {
+        size_t canvas_start_x = (terminal_cols_ - canvas_width_) / 2 - 3;
+        size_t canvas_start_y = (terminal_rows_ - canvas_height_) / 2;
+        if (full_update) {
+            std::cout << ANSI_CLEAR;
+            draw_border(canvas_start_x, canvas_start_y);
+            draw_controls_text();
+        }
+        for (size_t y = 0; y < level_->height(); y++) {
+            for (size_t x = 0; x < level_->width(); x++) {
+                auto& tile = level_->tiles_[y][x];
+                if (full_update || tile.changed) {
+                    draw_tile(canvas_start_x, canvas_start_y, x, y, tile);
+                    tile.changed = false;
+                }
+            }
+        }
+        std::cout.flush();
     }
 
     void handle_input() {
         char ch;
         if (read(STDIN_FILENO, &ch, 1) == 1) {
             if (ch == 'q') running_ = false;
+            if (ch == ' ') {
+                level_->tiles_[robot_->y_][robot_->x_].flags.emplace(FlagColor::Red);
+                level_->tiles_[robot_->y_][robot_->x_].changed = true;
+            }
             if (!manual_control_) return;
             if (ch == 'w' || ch == 'a' || ch == 's' || ch == 'd') {
                 robot_->reset_action();
@@ -409,168 +547,64 @@ private:
 public:
     Game(size_t step_speed_ms = 100) : step_speed_(step_speed_ms) {}
     bool step() {
+        if (!robot_ || !level_) {
+            return false;
+        }
         auto start_time = std::chrono::steady_clock::now();
+
         if (tick_ == 0) {
             setup_terminal();
         }
+        
         handle_input();
         robot_->step();
+
         bool size_changed = check_for_terminal_size_change();
-        draw(!size_changed);
+        if (size_changed) {
+            if (terminal_rows_ < canvas_height_ + 5 || terminal_cols_ < canvas_width_ + 2) {
+                canvas_too_small_ = true;
+                draw_canvas_too_small();
+            } else {
+                canvas_too_small_ = false;
+            }
+        }
+
+        if (!canvas_too_small_) {
+            draw(size_changed);
+        }
+
         if (!running_) {
             cleanup_terminal();
             return false;
         }
+        
         auto elapsed_time = std::chrono::steady_clock::now() - start_time;
         if (elapsed_time < step_speed_) {
             std::this_thread::sleep_for(step_speed_ - elapsed_time);
         }
         return true;
     }
+
+    void load_level(std::unique_ptr<Level> level) {
+        level_ = std::move(level);
+        canvas_width_ = level_->width()*TILE_WIDTH;
+        canvas_height_ = level_->height()*TILE_HEIGHT;
+        auto [initial_robot_x, initial_robot_y] = level_->initial_robot_xy();
+        robot_ = std::make_unique<Robot>(initial_robot_x, initial_robot_y, level_->initial_robot_direction(), level_);
+    }
+
+    void run_with_manual_control() {
+        manual_control_ = true;
+        while (step()) {};
+    }
 };
 
 
 
 int main() {
-    
-
-    std::vector<std::vector<size_t>> tiles(VERTICAL_TILES_COUNT, std::vector<size_t>(HORIZONTAL_TILES_COUNT, 0));
-    // tiles[4][4] = 6;
-    tiles[4][5] = 6;
-    // tiles[5][5] = 6;
-    tiles[6][5] = 6;
-    tiles[4][7] = 6;
-    // tiles[5][7] = 6;
-    tiles[6][7] = 6;
-    tiles[6][10] = 6;
-    tiles[6][11] = 6;
-    tiles[6][12] = 6;
-    tiles[6][13] = 6;
-    size_t current_x = 6, current_y = 6;
-    tiles[current_x][current_y] = 4;
-
-    std::vector<std::vector<bool>> visible_tiles(VERTICAL_TILES_COUNT, std::vector<bool>(HORIZONTAL_TILES_COUNT, true));
-    
-    
-    recalculate_visible_tiles(current_x, current_y, visible_tiles, tiles);
-    size_t i = 0;
-    while (running) {
-        std::cout << "\033[H"; // move cursor to top-left
-        size_t rows, cols;
-        get_terminal_size(rows, cols);
-        if (rows < CANVAS_HEIGHT + 2 || cols < CANVAS_WIDTH + 2) {
-            std::cout << "Please resize your window to make the canvas fit!";
-        } else {
-            size_t canvas_start_x = (cols - CANVAS_WIDTH) / 2 - 1;
-            size_t canvas_start_y = (rows - CANVAS_HEIGHT) / 2 - 1;
-
-            if (i % 10 == 0) {
-                for (size_t r = 0; r < rows; ++r) {
-                    for (size_t c = 0; c < cols; ++c) {
-                        // std::cout << (((r+c) % 2 == 0) ? fill1 : fill2);
-                        if (c < canvas_start_x || r < canvas_start_y || c > canvas_start_x + CANVAS_WIDTH + 1 || r > canvas_start_y + CANVAS_HEIGHT + 1) {
-                            std::cout << ".";
-                            continue;
-                        }
-                        size_t x = c - canvas_start_x;
-                        size_t y = r - canvas_start_y;
-                        if (y == 0 && x == 0) {
-                            std::cout << LINE_WALLS[0];
-                        } else if (y == 0 && x == CANVAS_WIDTH+1) {
-                            std::cout << LINE_WALLS[1];
-                        } else if (y == CANVAS_HEIGHT+1 && x == 0) {
-                            std::cout << LINE_WALLS[2];
-                        } else if (y == CANVAS_HEIGHT+1 && x == CANVAS_WIDTH+1) {
-                            std::cout << LINE_WALLS[3];
-                        } else if ((y == 0 || y == CANVAS_HEIGHT+1) && x < CANVAS_WIDTH+1) {
-                            std::cout << LINE_WALLS[4];
-                        } else if ((x == 0 || x == CANVAS_WIDTH+1) && y < CANVAS_HEIGHT+1) {
-                            std::cout << LINE_WALLS[5];
-                        } else {
-                            x--;
-                            y--;
-                            size_t tile_x = x / TILE_WIDTH;
-                            size_t tile_y = y / TILE_HEIGHT;
-                            size_t tile_inner_x = x % TILE_WIDTH;
-                            size_t tile_inner_y = y % TILE_HEIGHT;
-                            std::set<FlagColor> flag_colors = {FlagColor::Red, FlagColor::Blue, FlagColor::Green, FlagColor::Yellow};
-                            if (tile_x == 3 && tile_y == 3) {
-                                // if (tile_inner_y == 0 || tile_inner_y == TILE_HEIGHT-1) {
-                                    // if (tile_inner_x == 0) {
-                                    size_t idx = tile_inner_x % flag_colors.size();
-                                    FlagColor flag_color = *std::next(flag_colors.begin(), idx);
-                                    switch (flag_color)
-                                    {
-                                    case FlagColor::Red:
-                                        std::cout << ANSI_BG_RED;
-                                        break;
-                                    case FlagColor::Green:
-                                        std::cout << ANSI_BG_GREEN;
-                                        break;
-                                    case FlagColor::Blue:
-                                        std::cout << ANSI_BG_BLUE;
-                                        break;
-                                    case FlagColor::Yellow:
-                                        std::cout << ANSI_BG_YELLOW;
-                                        break;
-                                    };
-                                    // }
-                                // } else if (tile_inner_x == 0 || tile_inner_x == TILE_WIDTH-1) {
-                                    // std::cout << ANSI_BG_RED;
-                                // }
-                            }
-                            if (!visible_tiles[tile_y][tile_x]) {
-                                srand(x*HORIZONTAL_TILES_COUNT+y);
-                                std::cout << ((rand() % 2 == 0) ? "?" : "X");;
-                            } else {
-                                switch (tiles[tile_y][tile_x])
-                                {
-                                case 0:
-                                    srand(x*HORIZONTAL_TILES_COUNT+y);
-                                    std::cout << ((rand() % 17 == 0) ? 'v' : ' ');
-                                    break;
-                                case 1:
-                                    std::cout << ROBOT_UP_ART[tile_inner_y][tile_inner_x];
-                                    break;
-                                case 2:
-                                    std::cout << ROBOT_DOWN_ART[tile_inner_y][tile_inner_x];
-                                    break;
-                                case 3:
-                                    std::cout << ROBOT_LEFT_ART[tile_inner_y][tile_inner_x];
-                                    break;
-                                case 4:
-                                    std::cout << ROBOT_RIGHT_ART[tile_inner_y][tile_inner_x];
-                                    break;
-                                case 5:
-                                    std::cout << BLOCK_ART[tile_inner_y][tile_inner_x];
-                                    break;
-                                case 6:
-                                    std::cout << (((tile_x+tile_y) % 2 == 0) ? WALL_ART_EVEN : WALL_ART_ODD)[tile_inner_y][tile_inner_x];
-                                    break;
-                                }
-                            }
-                            
-                            
-                            if (tile_x == 3 && tile_y == 3) {
-                                // if (tile_inner_y == 0 || tile_inner_y == TILE_HEIGHT-1) {
-                                    // if (tile_inner_x == TILE_WIDTH-1) {
-                                        std::cout << ANSI_RESET;
-                                    // }
-                                // } else if (tile_inner_x == 0 || tile_inner_x == TILE_WIDTH-1) {
-                                    // std::cout << ANSI_RESET;
-                                // }
-                            }
-                        }
-                    }
-                }
-            }
-            
-        }
-        std::cout.flush();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        ++i;
-    }
-
+    auto g = Game();
+    g.load_level(std::make_unique<Level1>());
+    g.run_with_manual_control();
     
     return 0;
 }
