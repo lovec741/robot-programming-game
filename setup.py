@@ -1,4 +1,5 @@
 # Available at setup time due to pyproject.toml
+from glob import glob
 import os
 
 from pybind11.setup_helpers import Pybind11Extension, build_ext
@@ -30,8 +31,9 @@ class BuildExtWithStubs(build_ext):
 ext_modules = [
     Pybind11Extension(
         "robot_programming_game",
-        ["src/bindings.cpp"],
+        sorted(glob("src/*.cpp")),
         define_macros=[("VERSION_INFO", __version__)],
+        cxx_std="20"
     ),
 ]
 
