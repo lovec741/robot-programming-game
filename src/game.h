@@ -25,6 +25,7 @@ private:
     size_t canvas_width_;
     size_t canvas_height_;
     bool running_ = true;
+    bool win_screen_shown_ = false;
 
     /* updates terminal size variables, returns true if they changed */
     bool check_for_terminal_size_change();

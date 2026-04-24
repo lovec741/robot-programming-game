@@ -236,7 +236,7 @@ bool Game::step() {
     }
     
     handle_input();
-    if (!level_->won_) {
+    if (!win_screen_shown_) {
         robot_->step();
     }
 
@@ -250,11 +250,12 @@ bool Game::step() {
         }
     }
 
-    if (!canvas_too_small_) {
+    if (!canvas_too_small_ && !win_screen_shown_) {
         draw(size_changed);
     }
     if (level_->won_) {
         draw_won_text();
+        win_screen_shown_ = true;
     }
 
     if (!running_) {
